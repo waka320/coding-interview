@@ -65,3 +65,68 @@ class CategoryViewTests(APITestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Category.objects.filter(id=category.id).exists())
+
+    def test_create_duplicate_name_same_company(self):
+        Category.objects.create(company=self.company, name="食品")
+        payload = {
+            "company": str(self.company.id),
+            "name": "食品",
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Category.objects.count(), 1)
+
+    def test_create_same_name_different_company(self):
+        other_company = Company.objects.create(name="B社")
+        Category.objects.create(company=self.company, name="食品")
+        payload = {
+            "company": str(other_company.id),
+            "name": "食品",
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_update_same_name_without_change(self):
+        category = Category.objects.create(company=self.company, name="食品")
+        payload = {
+            "company": str(self.company.id),
+            "name": "食品",
+            "parent_category": None,
+        }
+
+        response = self.client.put(f"/api/categories/{category.id}/", payload, format="json")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_update_duplicate_name_same_company(self):
+        Category.objects.create(company=self.company, name="食品")
+        daily = Category.objects.create(company=self.company, name="日用品")
+        payload = {
+            "company": str(self.company.id),
+            "name": "食品",
+            "parent_category": None,
+        }
+
+        response = self.client.put(f"/api/categories/{daily.id}/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        daily.refresh_from_db()
+        self.assertEqual(daily.name, "日用品")
+
+    def test_partial_update_duplicate_name_same_company(self):
+        Category.objects.create(company=self.company, name="食品")
+        daily = Category.objects.create(company=self.company, name="日用品")
+
+        response = self.client.patch(
+            f"/api/categories/{daily.id}/",
+            {"name": "食品"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
