@@ -1,3 +1,5 @@
+import uuid
+
 from rest_framework.test import APITestCase
 
 from api.models import Category, Company
@@ -14,7 +16,9 @@ class CategoryViewTests(APITestCase):
         response = self.client.get("/api/categories/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 2)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual({item["name"] for item in data}, {"食品", "日用品"})
 
     def test_retrieve(self):
         category = Category.objects.create(company=self.company, name="食品")
@@ -91,6 +95,9 @@ class CategoryViewTests(APITestCase):
         response = self.client.post("/api/categories/", payload, format="json")
 
         self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            Category.objects.filter(company=other_company, name="食品").exists()
+        )
 
     def test_update_same_name_without_change(self):
         category = Category.objects.create(company=self.company, name="食品")
@@ -130,3 +137,56 @@ class CategoryViewTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+        daily.refresh_from_db()
+        self.assertEqual(daily.name, "日用品")
+
+    def test_create_blank_name(self):
+        payload = {
+            "company": str(self.company.id),
+            "name": "",
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.json())
+        self.assertEqual(Category.objects.count(), 0)
+
+    def test_create_missing_name(self):
+        payload = {
+            "company": str(self.company.id),
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.json())
+        self.assertEqual(Category.objects.count(), 0)
+
+    def test_create_name_too_long(self):
+        payload = {
+            "company": str(self.company.id),
+            "name": "あ" * 256,
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.json())
+        self.assertEqual(Category.objects.count(), 0)
+
+    def test_create_nonexistent_company(self):
+        payload = {
+            "company": str(uuid.uuid4()),
+            "name": "食品",
+            "parent_category": None,
+        }
+
+        response = self.client.post("/api/categories/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("company", response.json())
+        self.assertEqual(Category.objects.count(), 0)
